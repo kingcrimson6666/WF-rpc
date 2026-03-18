@@ -1,0 +1,72 @@
+name: ci build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+
+  ubuntu-cmake:
+    name: ubuntu
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: setup
+      run: |
+       sudo apt-get update
+       sudo apt-get install -y cmake g++ libgtest-dev make libssl-dev
+       sudo apt-get install -y valgrind
+       sudo apt-get install -y libsnappy-dev libzstd-dev liblz4-dev
+    - uses: actions/checkout@v2
+    - name: make
+      run: make KAFKA=y
+    - name: make check
+      run: make check KAFKA=y
+    - name: make tutorial
+      run: make tutorial KAFKA=y
+      
+  fedora-cmake:
+    name: fedora
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - run: cat /etc/os-release
+    - name: install dependencies
+      run: |
+       sudo dnf -y update
+       sudo dnf install -y cmake gcc-c++ gtest-devel make
+       sudo dnf install -y openssl-devel valgrind
+       sudo dnf install -y snappy-devel libzstd-devel lz4-devel zlib-devel
+    - name: make
+      run: make KAFKA=y
+    - name: make check
+      run: make check KAFKA=y
+    - name: make tutorial
+      run: make tutorial KAFKA=y
+
+  freebsd-cmake:
+    name: freebsd
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build and test on FreeBSD
+      uses: vmactions/freebsd-vm@v1
+      with:
+        usesh: true
+        mem: 2048
+        copyback: false
+        prepare: |
+          pkg update -f
+          pkg install -y cmake gmake gcc pkgconf openssl devel/googletest
+          pkg install -y valgrind
+          pkg install -y snappy zstd liblz4
+        run: |
+          freebsd-version
+          gmake KAFKA=y
+          gmake check KAFKA=y
+          gmake tutorial KAFKA=y

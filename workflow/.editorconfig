@@ -1,0 +1,13 @@
+# top-most EditorConfig file
+root = true
+ 
+# all files
+[*]
+indent_style = tab
+indent_size = 4
+[src/kernel/list.h]
+indent_style = tab
+indent_size = 8
+[src/kernel/rbtree.*]
+indent_style = tab
+indent_size = 8
