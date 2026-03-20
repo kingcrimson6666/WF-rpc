@@ -41,5 +41,6 @@ proto_examples: all
 clean:
 	rm -rf $(CORE_BUILD_DIR) $(RPC_CORE_LIB)
 	rm -f $(BUILD_DIR)/echo.pb.h $(BUILD_DIR)/echo.pb.cc $(BUILD_DIR)/echo.pb.o
-	rm -f $(BUILD_DIR)/rpc_server $(BUILD_DIR)/rpc_client $(BUILD_DIR)/rpc_easy_server $(BUILD_DIR)/rpc_easy_client $(BUILD_DIR)/rpc_upstream_client
+	rm -f $(BUILD_DIR)/rpc_simple_server_demo $(BUILD_DIR)/rpc_simple_client_demo
+	rm -f $(BUILD_DIR)/rpc_upstream_server_demo $(BUILD_DIR)/rpc_upstream_client_demo
 	-$(MAKE) -C $(WORKFLOW_DIR) clean

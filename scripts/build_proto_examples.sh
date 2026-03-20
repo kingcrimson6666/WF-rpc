@@ -27,10 +27,8 @@ need_cmd "$CXX"
 
 mkdir -p "${BUILD_DIR}" "${OBJ_DIR}"
 
-if [ ! -f "${RPC_CORE_LIB}" ] || [ ! -f "${WORKFLOW_LIB}" ]; then
-	echo "[INFO] building workflow and rpc core via make"
-	make -C "${ROOT_DIR}" all
-fi
+echo "[INFO] building workflow and rpc core via make"
+make -C "${ROOT_DIR}" all
 
 echo "[INFO] generating protobuf sources"
 protoc -I "${PROTO_DIR}" --cpp_out="${BUILD_DIR}" "${PROTO_DIR}/echo.proto"
@@ -56,17 +54,15 @@ link_bin() {
 }
 
 compile_obj "${BUILD_DIR}/echo.pb.cc" "${OBJ_DIR}/echo.pb.o"
-compile_obj "${EXAMPLE_DIR}/server_main.cc" "${OBJ_DIR}/server_main.o"
-compile_obj "${EXAMPLE_DIR}/client_main.cc" "${OBJ_DIR}/client_main.o"
-compile_obj "${EXAMPLE_DIR}/easy_server_main.cc" "${OBJ_DIR}/easy_server_main.o"
-compile_obj "${EXAMPLE_DIR}/easy_client_main.cc" "${OBJ_DIR}/easy_client_main.o"
-compile_obj "${EXAMPLE_DIR}/upstream_governance_client.cc" "${OBJ_DIR}/upstream_governance_client.o"
+compile_obj "${EXAMPLE_DIR}/simple_server_demo.cc" "${OBJ_DIR}/simple_server_demo.o"
+compile_obj "${EXAMPLE_DIR}/simple_client_demo.cc" "${OBJ_DIR}/simple_client_demo.o"
+compile_obj "${EXAMPLE_DIR}/upstream_server_demo.cc" "${OBJ_DIR}/upstream_server_demo.o"
+compile_obj "${EXAMPLE_DIR}/upstream_client_demo.cc" "${OBJ_DIR}/upstream_client_demo.o"
 
 echo "[INFO] linking example binaries"
-link_bin "${BUILD_DIR}/rpc_server" "${OBJ_DIR}/server_main.o" "${OBJ_DIR}/echo.pb.o"
-link_bin "${BUILD_DIR}/rpc_client" "${OBJ_DIR}/client_main.o" "${OBJ_DIR}/echo.pb.o"
-link_bin "${BUILD_DIR}/rpc_easy_server" "${OBJ_DIR}/easy_server_main.o" "${OBJ_DIR}/echo.pb.o"
-link_bin "${BUILD_DIR}/rpc_easy_client" "${OBJ_DIR}/easy_client_main.o" "${OBJ_DIR}/echo.pb.o"
-link_bin "${BUILD_DIR}/rpc_upstream_client" "${OBJ_DIR}/upstream_governance_client.o" "${OBJ_DIR}/echo.pb.o"
+link_bin "${BUILD_DIR}/rpc_simple_server_demo" "${OBJ_DIR}/simple_server_demo.o" "${OBJ_DIR}/echo.pb.o"
+link_bin "${BUILD_DIR}/rpc_simple_client_demo" "${OBJ_DIR}/simple_client_demo.o" "${OBJ_DIR}/echo.pb.o"
+link_bin "${BUILD_DIR}/rpc_upstream_server_demo" "${OBJ_DIR}/upstream_server_demo.o" "${OBJ_DIR}/echo.pb.o"
+link_bin "${BUILD_DIR}/rpc_upstream_client_demo" "${OBJ_DIR}/upstream_client_demo.o" "${OBJ_DIR}/echo.pb.o"
 
 echo "[OK] built proto and example binaries in ${BUILD_DIR}"

@@ -3,10 +3,14 @@
 
 #include <functional>
 #include <string>
+#include <cstdint>
+#include <condition_variable>
+#include <mutex>
 #include <utility>
 #include <vector>
 
 #include "rpc_framework.h"
+#include "workflow/WFFacilities.h"
 
 namespace wf_rpc
 {
@@ -91,6 +95,155 @@ private:
 	std::string host_;
 	unsigned short port_;
 	std::string service_name_;
+};
+
+struct SimpleRpcResult
+{
+	uint32_t status;
+	int state;
+	int error;
+
+	SimpleRpcResult() :
+		status(RPC_NETWORK_ERROR),
+		state(-1),
+		error(0)
+	{
+	}
+};
+
+class SimpleRpcServer
+{
+public:
+	SimpleRpcServer(const std::string& host,
+			 unsigned short port,
+			 const std::string& service_name) :
+		host_(host),
+		port_(port),
+		server_(service_name),
+		stop_requested_(false)
+	{
+	}
+
+	template<class Req, class Resp>
+	void register_method(const std::string& method,
+				 std::function<void (const Req&, Resp&)> handler)
+	{
+		this->server_.register_method<Req, Resp>(method, std::move(handler));
+	}
+
+	int start()
+	{
+		std::lock_guard<std::mutex> lock(this->lifecycle_mutex_);
+		this->stop_requested_ = false;
+		return this->server_.start(this->host_.c_str(), this->port_);
+	}
+
+	int run_until_stopped();
+
+	void request_stop();
+
+	void wait_for_stop();
+
+	void stop()
+	{
+		this->server_.stop();
+	}
+
+private:
+	std::string host_;
+	unsigned short port_;
+	EasyRpcServer server_;
+	std::mutex lifecycle_mutex_;
+	std::condition_variable lifecycle_cv_;
+	bool stop_requested_;
+};
+
+class SimpleRpcClient
+{
+public:
+	template<class Req, class Resp>
+	static SimpleRpcResult call(const std::string& host,
+					unsigned short port,
+					const std::string& service,
+					const std::string& method,
+					const Req& request,
+					Resp *response,
+					int retry_max = 1)
+	{
+		SimpleRpcResult result;
+		WFFacilities::WaitGroup wait_group(1);
+
+		RpcTask *task = RpcClient::create_pb_task<Req, Resp>(
+			host,
+			port,
+			service,
+			method,
+			request,
+			retry_max,
+			[&result, response, &wait_group](uint32_t status,
+								 const Resp& resp,
+								 int state,
+								 int error,
+								 RpcTask *) {
+				result.status = status;
+				result.state = state;
+				result.error = error;
+				if (response && state == WFT_STATE_SUCCESS && status == RPC_OK)
+					*response = resp;
+				wait_group.done();
+			});
+
+		if (!task)
+		{
+			result.error = -1;
+			return result;
+		}
+
+		task->start();
+		wait_group.wait();
+		return result;
+	}
+
+	template<class Req, class Resp>
+	static SimpleRpcResult call_by_url(const std::string& url,
+					   const std::string& service,
+					   const std::string& method,
+					   const Req& request,
+					   Resp *response,
+					   int retry_max = 1)
+	{
+		SimpleRpcResult result;
+		WFFacilities::WaitGroup wait_group(1);
+
+		RpcTask *task = RpcClient::create_pb_task_by_url<Req, Resp>(
+			url,
+			service,
+			method,
+			request,
+			retry_max,
+			[&result, response, &wait_group](uint32_t status,
+								 const Resp& resp,
+								 int state,
+								 int error,
+								 RpcTask *) {
+				result.status = status;
+				result.state = state;
+				result.error = error;
+				if (response && state == WFT_STATE_SUCCESS && status == RPC_OK)
+					*response = resp;
+				wait_group.done();
+			});
+
+		if (!task)
+		{
+			result.error = -1;
+			return result;
+		}
+
+		task->start();
+		wait_group.wait();
+		return result;
+	}
 };
 
 class ServiceRegistry

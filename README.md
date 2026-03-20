@@ -1,356 +1,283 @@
-# Workflow RPC Demo（基于 Protobuf）
+# workflow-rpc-demo
 
-这是一个基于 Workflow 的轻量级 RPC 示例工程，包含：
+一个基于 Workflow 与 Protobuf 的轻量 RPC 示例工程，包含：
 
-1. 自定义二进制 RPC 协议（头部 + 路由元信息 + Protobuf 负载）
-2. 服务端/客户端基础框架封装
-3. 上游服务发现与治理能力（基于 Workflow Upstream）
-4. 更易用的一层业务封装（EasyRpcServer / EasyRpcClient / ServiceRegistry）
-5. 可直接运行的示例程序
+- 最小可用 RPC 框架封装（server/client/upstream）
+- 单机直连调用示例（simple demo）
+- upstream 加权路由示例（upstream demo）
+- 单 client + 单 server 的多线程 QPS 测试程序
 
-该项目适合用于学习以下能力：
+项目目标是帮助你快速完成从“定义 proto -> 启动服务 -> 发起调用 -> 做吞吐测试”的完整闭环。
 
-1. Workflow 网络任务模型与 ProtocolMessage 扩展
-2. Protobuf 消息序列化/反序列化在自定义 RPC 协议中的接入
-3. 服务治理（权重路由、故障切换、动态节点管理）的工程化落地
-
----
-
-## 目录结构
+## 1. 项目结构
 
 ```text
-.
-├── CMakeLists.txt                  # 项目根构建入口
-├── README.md
+project/
+├── CMakeLists.txt                 # 根 CMake 构建入口（推荐）
+├── Makefile                       # 兼容 make 构建入口
 ├── proto/
-│   └── echo.proto                  # Protobuf 定义
+│   └── echo.proto                 # 示例 RPC 协议定义
 ├── rpc/
 │   └── src/
-│       ├── rpc_message.h/.cc       # RPC 协议报文编解码
-│       ├── rpc_framework.h/.cc     # RpcServer/RpcClient 框架层
-│       └── rpc_easy.h/.cc          # 易用封装层
+│       ├── rpc_message.*          # 自定义 RPC 消息编解码
+│       ├── rpc_framework.*        # 底层 RPC server/client/upstream 封装
+│       └── rpc_easy.*             # 便捷 API（SimpleRpcServer/Client）
 ├── example/
-│   ├── server_main.cc              # 基础服务端示例（原始框架）
-│   ├── client_main.cc              # 基础客户端示例（原始框架）
-│   ├── easy_server_main.cc         # 易用服务端示例
-│   ├── easy_client_main.cc         # 易用客户端示例
-│   └── upstream_governance_client.cc # 治理调用示例
-└── workflow/                       # Workflow 源码（本地依赖）
+│   ├── simple_server_demo.cc      # 单服务端示例
+│   ├── simple_client_demo.cc      # 单客户端示例
+│   ├── upstream_server_demo.cc    # 两后端服务端示例
+│   └── upstream_client_demo.cc    # upstream 客户端示例
+├── test/
+│   └── single_client_server_qps_test.cc  # 多线程 QPS 压测程序
+├── scripts/
+│   └── build_proto_examples.sh    # make 方式下构建 proto + example 的脚本
+└── workflow/                      # Workflow 子模块/源码
 ```
 
-说明：`rpc/` 目录仅保留源码，构建入口、proto 与示例都在根目录，便于统一管理。
+## 2. 核心能力
+
+### 2.1 RPC 状态语义
+
+`rpc/src/rpc_framework.h` 定义了统一状态码：
+
+- `RPC_OK`：成功
+- `RPC_BAD_REQUEST`：非法请求
+- `RPC_NOT_FOUND`：找不到 service/method
+- `RPC_PROTO_PARSE_ERROR`：请求/响应 protobuf 解析失败
+- `RPC_PROTO_SERIALIZE_ERROR`：响应序列化失败
+- `RPC_INTERNAL_ERROR`：服务端内部错误
+- `RPC_NETWORK_ERROR`：网络层错误
+
+客户端返回还包含 Workflow 运行态：
+
+- `state == WFT_STATE_SUCCESS` 表示传输层成功
+- `status == RPC_OK` 表示 RPC 业务成功
+
+通常需要两者都成功才算一次完整成功调用。
+
+### 2.2 便捷 API
+
+`rpc/src/rpc_easy.h` 提供了三组高层封装：
+
+- `SimpleRpcServer`：快速注册 protobuf 方法并启动服务
+- `SimpleRpcClient`：同步阻塞调用，返回 `SimpleRpcResult`
+- `ServiceRegistry`：配置/清理 upstream 路由（加权后端等）
+
+## 3. 环境依赖
+
+建议在 Linux 下准备：
+
+- C++ 编译器：`g++`（支持 C++11）
+- CMake：`>= 3.16`
+- GNU Make
+- Protobuf：`protoc` + C++ 库
+- OpenSSL 开发库
+- pthread / dl / rt（Linux 常见系统库）
+
+如果你使用 Ubuntu，可参考：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+  build-essential cmake make \
+  protobuf-compiler libprotobuf-dev \
+  libssl-dev
+```
+
+## 4. 构建方式
+
+## 4.1 方式 A：CMake（推荐）
+
+```bash
+cd project
+cmake -S . -B build
+cmake --build build -j
+```
+
+构建完成后，主要可执行文件在 `build/` 下：
+
+- `rpc_simple_server_demo`
+- `rpc_simple_client_demo`
+- `rpc_upstream_server_demo`
+- `rpc_upstream_client_demo`
+- `rpc_single_client_server_qps_test`
+
+## 4.2 方式 B：Make + 脚本
+
+```bash
+cd project
+make                # 构建 workflow 与 rpc core
+make proto_examples # 调用 scripts/build_proto_examples.sh 构建 proto + example
+```
+
+说明：
+
+- `make` 主要产出核心静态库（如 `build/libworkflow_rpc_core.a`）
+- `make proto_examples` 会生成并编译 `echo.pb.cc/.h` 及示例二进制
+
+## 5. 快速运行
+
+## 5.1 simple 直连示例
+
+终端 1（服务端）：
+
+```bash
+cd project/build
+./rpc_simple_server_demo
+```
+
+终端 2（客户端）：
+
+```bash
+cd project/build
+./rpc_simple_client_demo
+```
+
+预期：客户端输出类似 `simple rpc response: echo_simple: hello_simple_rpc`。
+
+## 5.2 upstream 加权路由示例
+
+终端 1（启动两个后端）：
+
+```bash
+cd project/build
+./rpc_upstream_server_demo
+```
+
+终端 2（通过 upstream 调用）：
+
+```bash
+cd project/build
+./rpc_upstream_client_demo
+```
+
+说明：
+
+- upstream 客户端会在进程内配置加权后端（9100 权重大于 9101）
+- 返回消息前缀可用于观察命中后端（`from_9100` / `from_9101`）
+
+## 5.3 单机多线程 QPS 测试
+
+该测试程序会在同一进程内：
+
+1. 启动本地单服务端（127.0.0.1:19000）
+2. 以线程档位 `[1, 2, 4, 8, 16, 32]` 启动客户端并发调用
+3. 统计每个档位的成功数、失败数、耗时、QPS、平均时延
+
+运行：
+
+```bash
+cd project/build
+./rpc_single_client_server_qps_test 1000
+```
+
+其中 `1000` 表示“每线程请求数”，可按机器性能调大，例如：
+
+```bash
+./rpc_single_client_server_qps_test 5000
+```
+
+输出字段含义：
+
+- `threads`：并发线程数
+- `total`：总请求数（threads * requests_per_thread）
+- `success` / `fail`：成功/失败请求数
+- `elapsed`：本档位总耗时（秒）
+- `qps`：每秒成功请求数
+- `avg_latency`：平均时延（微秒，按总请求均摊）
+
+### 5.3.1 实测结果（2026-03-20）
+
+本次测试命令：
+
+```bash
+cd project/build
+./rpc_single_client_server_qps_test 1000
+```
+
+测试说明：
+
+- 本地单机回环地址（127.0.0.1）
+- 单 client 进程 + 单 server 实例
+- 每线程请求数 `requests_per_thread = 1000`
+
+实测数据如下：
+
+| threads | total | success | fail | elapsed(s) | qps | avg_latency(us) |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 1000 | 1000 | 0 | 0.17 | 5969.15 | 167.53 |
+| 2 | 2000 | 2000 | 0 | 0.15 | 13018.10 | 76.82 |
+| 4 | 4000 | 4000 | 0 | 0.15 | 26076.17 | 38.35 |
+| 8 | 8000 | 8000 | 0 | 0.14 | 55697.90 | 17.95 |
+| 16 | 16000 | 16000 | 0 | 0.15 | 107716.52 | 9.28 |
+| 32 | 32000 | 32000 | 0 | 0.19 | 172362.60 | 5.80 |
+
+观察：
+
+- 各线程档位 `fail=0`，本轮无失败请求。
+- QPS 随并发线程增加持续上升，说明在该负载下尚未明显触顶。
+- `avg_latency` 随线程增加而下降，主要因为总体吞吐提升带来的均摊效应。
+
+## 6. 如何扩展一个新 RPC 方法
+
+以新增 `SayHello` 方法为例：
+
+1. 在 `proto/echo.proto` 中增加消息体和 service rpc 定义
+2. 重新生成 protobuf 代码并重编译
+3. 在服务端使用 `register_method<Req, Resp>(...)` 注册处理器
+4. 在客户端通过 `SimpleRpcClient::call(...)` 发起调用
+5. 检查返回：`state == WFT_STATE_SUCCESS && status == RPC_OK`
+
+## 7. 常见问题排查
+
+### 7.1 服务端启动失败
+
+常见原因：
+
+- 端口已被占用
+- 没有权限绑定对应端口
+- 地址配置错误
+
+建议：
+
+```bash
+ss -lntp | grep 9000
+ss -lntp | grep 9100
+ss -lntp | grep 9101
+ss -lntp | grep 19000
+```
+
+### 7.2 客户端调用失败（state/status 非成功）
+
+检查顺序建议：
+
+1. 服务是否已启动且监听正确端口
+2. `service` / `method` 字符串是否与服务端注册完全一致
+3. Protobuf 请求/响应结构是否匹配
+4. 是否误把 upstream 名称配置成可被 DNS 解析的真实域名（可能绕过预期路由）
+
+### 7.3 CMake 新目标找不到
+
+当你新增了可执行目标但 `cmake --build build --target ...` 提示无该 target，通常是因为未重新配置。执行：
+
+```bash
+cd project
+cmake -S . -B build
+```
+
+然后再次构建目标。
+
+## 8. 开发建议
+
+- 推荐先跑通 `simple`，再切到 `upstream`
+- 压测时先用小请求量验证，再逐步增大
+- 若要做稳定对比，建议增加预热阶段和多轮统计
+- 若要观察尾延迟，建议额外记录 p95/p99
+
+## 9. 许可证与致谢
+
+本仓库包含 Workflow 目录，其许可证与说明见 `workflow/` 内相关文件（如 `LICENSE`、`README.md`、`README_cn.md`）。
 
 ---
 
-## 核心特性
-
-1. 一次 RPC 调用对应一个 `WFNetworkTask<RpcRequest, RpcResponse>`
-2. Protobuf 作为消息体，支持通用二进制传输
-3. 自定义 RPC 协议头，支持序列号、状态码、路由元信息
-4. 内置 Workflow Upstream 治理能力：
-  - 加权随机
-  - 一致性哈希
-  - 手动路由
-  - VNSWRR
-  - 节点动态增删
-5. 提供 URL 形式的任务创建接口，支持 path/query/fragment 参与路由策略
-
----
-
-## 依赖要求
-
-1. CMake >= 3.16
-2. C++11 编译器（g++/clang++）
-3. Protobuf（libprotobuf + protoc）
-4. OpenSSL
-5. Linux 下通常还需要 `librt`
-
----
-
-## 构建方法
-
-项目现在提供两段式构建：
-
-1. 根目录 `Makefile`：负责编译 `workflow` 与 `rpc/src` 核心源码
-2. 独立脚本：负责 `proto` 代码生成，以及 `example` 程序编译和链接
-
-### 1. 编译 workflow + rpc 核心
-
-在项目根目录执行：
-
-```sh
-make
-```
-
-该步骤会生成：
-
-1. `workflow/_lib/libworkflow.a`
-2. `build/libworkflow_rpc_core.a`
-
-### 2. 编译 proto + example 并链接
-
-执行：
-
-```sh
-./scripts/build_proto_examples.sh
-```
-
-该步骤会自动：
-
-1. 由 `proto/echo.proto` 生成 `build/echo.pb.h` 和 `build/echo.pb.cc`
-2. 编译 `example/` 下示例源码
-3. 链接 `build/rpc_server`、`build/rpc_client`、`build/rpc_easy_server`、`build/rpc_easy_client`、`build/rpc_upstream_client`
-
-也可以一条命令完成：
-
-```sh
-make proto_examples
-```
-
-清理构建产物：
-
-```sh
-make clean
-```
-
----
-
-## 快速开始
-
-### 1. 基础调用（原始框架 API）
-
-终端 1：
-
-```sh
-./build/rpc_server
-```
-
-终端 2：
-
-```sh
-./build/rpc_client
-```
-
-预期输出：
-
-```text
-response: echo: hello
-```
-
-默认值如下：
-
-1. 服务端默认端口：`9000`
-2. 客户端默认目标：`127.0.0.1:9000`
-3. 客户端默认消息：`hello`
-
-也支持显式参数覆盖：
-
-```sh
-./build/rpc_server 9000
-./build/rpc_client 127.0.0.1 9000 hello
-```
-
-### 2. 基础调用（易用封装 API）
-
-终端 1：
-
-```sh
-./build/rpc_easy_server
-```
-
-终端 2：
-
-```sh
-./build/rpc_easy_client
-```
-
-默认值如下：
-
-1. 服务端默认端口：`9000`
-2. 客户端默认目标：`127.0.0.1:9000`
-3. 客户端默认消息：`hello_easy`
-
-也支持显式参数覆盖：
-
-```sh
-./build/rpc_easy_server 9000
-./build/rpc_easy_client 127.0.0.1 9000 hello_easy
-```
-
-### 3. 治理调用（upstream 名 + 节点列表）
-
-先启动两台服务：
-
-```sh
-./build/rpc_easy_server 9000
-./build/rpc_easy_server 9001
-```
-
-再发起治理调用：
-
-```sh
-./build/rpc_upstream_client echo.service 9000 hello_gov 127.0.0.1:9000,127.0.0.1:9001
-```
-
----
-
-## 协议与调用流程
-
-### 协议层（rpc_message）
-
-协议头固定 32 字节，核心字段包括：
-
-1. `magic`（`WRPC`）
-2. `version`
-3. `sequence`
-4. `meta_len`
-5. `payload_len`
-6. `status`
-
-其中：
-
-1. `meta` 存放 `service + method` 路由信息
-2. `payload` 存放 Protobuf 二进制
-
-### 框架层（rpc_framework）
-
-1. 客户端：
-  - 将请求对象 `SerializeToString`
-  - 填充 `service/method` + `payload`
-  - 发送网络任务
-2. 服务端：
-  - 按 `service/method` 查找处理函数
-  - 请求 `ParseFromString`
-  - 执行业务逻辑
-  - 响应 `SerializeToString`
-
----
-
-## 状态码定义（RpcStatus）
-
-1. `RPC_OK = 0`
-2. `RPC_BAD_REQUEST = 400`
-3. `RPC_NOT_FOUND = 404`
-4. `RPC_PROTO_PARSE_ERROR = 422`
-5. `RPC_PROTO_SERIALIZE_ERROR = 423`
-6. `RPC_INTERNAL_ERROR = 500`
-7. `RPC_NETWORK_ERROR = 503`
-
----
-
-## API 说明
-
-### 一、基础框架 API
-
-#### 服务端
-
-1. `RpcServer::register_pb_method<Req, Resp>(service, method, handler)`
-2. `RpcServer::start(...)`
-3. `RpcServer::stop()`
-
-#### 客户端
-
-1. `RpcClient::create_pb_task<Req, Resp>(host, port, service, method, request, retry_max, callback)`
-2. `RpcClient::create_pb_task_by_url<Req, Resp>(url, service, method, request, retry_max, callback)`
-
-### 二、治理相关 API
-
-1. `RpcClient::create_weighted_upstream(...)`
-2. `RpcClient::create_consistent_hash_upstream(...)`
-3. `RpcClient::create_manual_upstream(...)`
-4. `RpcClient::create_vnswrr_upstream(...)`
-5. `RpcClient::add_upstream_server(...)`
-6. `RpcClient::remove_upstream_server(...)`
-7. `RpcClient::delete_upstream(...)`
-8. `RpcClient::configure_weighted_upstream(...)`
-
-### 三、易用封装 API（rpc_easy）
-
-1. `EasyRpcServer`
-  - 构造时绑定 `service_name`
-  - `register_method` 只需填 `method`
-2. `EasyRpcClient`
-  - 构造时绑定 `host/port/service_name`
-  - `create_task` 只需填 `method` 和请求对象
-3. `ServiceRegistry`
-  - 对 `RpcClient` 的治理接口再封装，简化服务注册/摘除操作
-
----
-
-## 代码片段示例
-
-### 1. 使用易用封装注册服务
-
-```cpp
-wf_rpc::EasyRpcServer server("wf.rpc.example.EchoService", &params);
-server.register_method<EchoRequest, EchoResponse>(
-   "Echo",
-   [](const EchoRequest& req, EchoResponse& resp) {
-      resp.set_message("echo: " + req.message());
-   });
-```
-
-### 2. 使用易用封装发起调用
-
-```cpp
-wf_rpc::EasyRpcClient client("127.0.0.1", 9000, "wf.rpc.example.EchoService");
-auto *task = client.create_task<EchoRequest, EchoResponse>(
-   "Echo", req, 1, callback);
-```
-
-### 3. 使用 ServiceRegistry 配置治理
-
-```cpp
-std::vector<wf_rpc::UpstreamServer> servers = {
-   {"127.0.0.1:9000", 5},
-   {"127.0.0.1:9001", 1}
-};
-wf_rpc::ServiceRegistry::configure_weighted("echo.service", servers, true);
-```
-
----
-
-## 示例程序说明
-
-1. `example/server_main.cc`
-  - 原始框架服务端写法
-2. `example/client_main.cc`
-  - 原始框架客户端写法
-  - 支持一次性 upstream bootstrap 参数：
-    - `addr1:port1@w1,addr2:port2@w2,...`
-3. `example/easy_server_main.cc`
-  - 简化服务端写法
-4. `example/easy_client_main.cc`
-  - 简化客户端写法
-5. `example/upstream_governance_client.cc`
-  - 展示 ServiceRegistry + EasyRpcClient 的治理调用路径
-
----
-
-## 常见问题
-
-### 1. 启动后调用报连接错误
-
-排查顺序：
-
-1. 目标服务端是否已启动并监听正确端口
-2. 客户端 host/port 是否匹配
-3. 本地防火墙或端口占用情况
-
-### 2. 返回 `RPC_NOT_FOUND`
-
-通常是 `service` 或 `method` 字符串不一致。
-
-### 3. 返回 `RPC_PROTO_PARSE_ERROR`
-
-通常是请求/响应类型与实际消息体不匹配，或 protobuf 版本/定义不一致。
-
----
-
-## 后续可扩展方向
-
-1. 对接外部注册中心（Consul/Nacos/etcd 等）实现动态服务发现
-2. 增加拦截器机制（日志、鉴权、指标）
-3. 增加统一配置中心与热更新
-4. 增加更多 RPC 方法与多服务示例
 

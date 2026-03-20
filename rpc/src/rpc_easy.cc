@@ -31,6 +31,33 @@ int EasyRpcServer::start(const char *host, unsigned short port)
 	return this->server_.start(host, port);
 }
 
+int SimpleRpcServer::run_until_stopped()
+{
+	if (this->start() != 0)
+		return -1;
+
+	this->wait_for_stop();
+	this->stop();
+	return 0;
+}
+
+void SimpleRpcServer::request_stop()
+{
+	{
+		std::lock_guard<std::mutex> lock(this->lifecycle_mutex_);
+		this->stop_requested_ = true;
+	}
+	this->lifecycle_cv_.notify_all();
+}
+
+void SimpleRpcServer::wait_for_stop()
+{
+	std::unique_lock<std::mutex> lock(this->lifecycle_mutex_);
+	this->lifecycle_cv_.wait(lock, [this] {
+		return this->stop_requested_;
+	});
+}
+
 void EasyRpcServer::stop()
 {
 	this->server_.stop();
