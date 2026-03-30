@@ -1,0 +1,11 @@
+.git
+.gitignore
+build
+workflow/build.cmake
+workflow/_lib
+workflow/_include
+workflow/.git
+**/*.o
+**/*.a
+**/*.so
+**/.DS_Store

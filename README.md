@@ -115,6 +115,79 @@ make proto_examples # 调用 scripts/build_proto_examples.sh 构建 proto + exam
 - `make` 主要产出核心静态库（如 `build/libworkflow_rpc_core.a`）
 - `make proto_examples` 会生成并编译 `echo.pb.cc/.h` 及示例二进制
 
+## 4.3 方式 C：Docker / Docker Compose（容器化推荐）
+
+仓库已提供以下容器文件：
+
+- `Dockerfile`：多阶段构建（builder + runtime）
+- `docker-compose.yml`：按场景编排 `simple` / `upstream` / `qps`
+- `.dockerignore`：缩小构建上下文
+
+### 4.3.1 构建镜像
+
+```bash
+cd project
+docker build -t workflow-rpc-demo:latest .
+```
+
+### 4.3.2 运行 simple 场景
+
+```bash
+cd project
+docker compose --profile simple up --build --abort-on-container-exit simple-server simple-client
+```
+
+说明：
+
+- `simple-client` 运行后会退出；可通过日志看到响应输出
+- 如需清理容器：
+
+```bash
+docker compose --profile simple down
+```
+
+### 4.3.3 运行 upstream 场景
+
+```bash
+cd project
+docker compose --profile upstream up --build --abort-on-container-exit upstream-server upstream-client
+```
+
+清理：
+
+```bash
+docker compose --profile upstream down
+```
+
+### 4.3.4 运行 QPS 场景
+
+默认每线程 1000 请求：
+
+```bash
+cd project
+docker compose --profile qps run --build --rm qps-test
+```
+
+自定义每线程请求数（例如 5000）：
+
+```bash
+cd project
+docker compose --profile qps run --build --rm qps-test ./rpc_single_client_server_qps_test 5000
+```
+
+### 4.3.5 容器化参数说明
+
+`Dockerfile` 在构建阶段默认关闭了 Workflow 的可选模块：
+
+- `KAFKA=n`
+- `MYSQL=n`
+- `REDIS=n`
+- `CONSUL=n`
+
+并保留 `UPSTREAM=y`，以支持 upstream 示例。
+
+注意：当前示例程序中的 client/server 目标地址使用回环地址（`127.0.0.1`），Compose 已通过共享网络命名空间确保示例可直接运行。
+
 ## 5. 快速运行
 
 ## 5.1 simple 直连示例
