@@ -109,7 +109,7 @@ RpcTask *RpcClient::create_task_by_url(const std::string& url,
 {
 	using Factory = WFNetworkTaskFactory<RpcRequest, RpcResponse>;
 	RpcTask *task = Factory::create_client_task(TT_TCP,
-									 url,
+									 url.c_str(),
 									 retry_max,
 									 std::move(callback));
 	task->set_keep_alive(30 * 1000);
@@ -124,21 +124,21 @@ int RpcClient::create_weighted_upstream(const std::string& upstream_name,
 }
 
 int RpcClient::create_consistent_hash_upstream(const std::string& upstream_name,
-							   upstream_route_t consitent_hash)
+							   upstream_route_t consistent_hash)
 {
 	return UpstreamManager::upstream_create_consistent_hash(upstream_name,
-											consitent_hash);
+											consistent_hash);
 }
 
 int RpcClient::create_manual_upstream(const std::string& upstream_name,
 					  upstream_route_t select,
 					  bool try_another,
-					  upstream_route_t consitent_hash)
+					  upstream_route_t consistent_hash)
 {
 	return UpstreamManager::upstream_create_manual(upstream_name,
 								   select,
 								   try_another,
-								   consitent_hash);
+								   consistent_hash);
 }
 
 int RpcClient::create_vnswrr_upstream(const std::string& upstream_name)
@@ -188,7 +188,10 @@ int RpcClient::configure_weighted_upstream(const std::string& upstream_name,
 		struct AddressParams params = ADDRESS_PARAMS_DEFAULT;
 		params.weight = servers[i].weight ? servers[i].weight : 1;
 		if (add_upstream_server(upstream_name, servers[i].address, &params) < 0)
+		{
+			delete_upstream(upstream_name);
 			return -1;
+		}
 	}
 
 	return 0;
@@ -210,7 +213,10 @@ int RpcClient::configure_weighted_upstream(const std::string& upstream_name,
 	for (size_t i = 0; i < servers.size(); i++)
 	{
 		if (add_upstream_server(upstream_name, servers[i].address, &servers[i].params) < 0)
+		{
+			delete_upstream(upstream_name);
 			return -1;
+		}
 	}
 
 	return 0;

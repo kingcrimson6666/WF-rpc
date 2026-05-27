@@ -171,11 +171,11 @@ public:
 	static int create_weighted_upstream(const std::string& upstream_name,
 							 bool try_another);
 	static int create_consistent_hash_upstream(const std::string& upstream_name,
-								upstream_route_t consitent_hash);
+								upstream_route_t consistent_hash);
 	static int create_manual_upstream(const std::string& upstream_name,
 						 upstream_route_t select,
 						 bool try_another,
-						 upstream_route_t consitent_hash);
+						 upstream_route_t consistent_hash);
 	static int create_vnswrr_upstream(const std::string& upstream_name);
 	static int delete_upstream(const std::string& upstream_name);
 

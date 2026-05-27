@@ -276,11 +276,6 @@ int RpcMessage::append(const void *buf, size_t size)
 {
 	size_t used = size;
 	int ret = this->append(buf, &used);
-	if (ret >= 0 && used < size)
-	{
-		errno = EBADMSG;
-		return -1;
-	}
 
 	return ret;
 }

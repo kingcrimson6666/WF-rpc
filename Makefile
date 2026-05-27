@@ -12,7 +12,14 @@ CPPFLAGS := -I$(RPC_SRC_DIR) -I$(WORKFLOW_DIR)/_include
 RPC_SRCS := \
 	$(RPC_SRC_DIR)/rpc_message.cc \
 	$(RPC_SRC_DIR)/rpc_framework.cc \
-	$(RPC_SRC_DIR)/rpc_easy.cc
+	$(RPC_SRC_DIR)/rpc_easy.cc \
+	$(RPC_SRC_DIR)/tinypb_codec.cc \
+	$(RPC_SRC_DIR)/tinypb_rpc_channel.cc \
+	$(RPC_SRC_DIR)/tinypb_rpc_async_channel.cc \
+	$(RPC_SRC_DIR)/tinypb_rpc_controller.cc \
+	$(RPC_SRC_DIR)/tinypb_rpc_server.cc \
+	$(RPC_SRC_DIR)/tinypb_rpc_dispatcher.cc \
+	$(RPC_SRC_DIR)/tinypb_rpc_upstream.cc
 RPC_OBJS := $(patsubst $(RPC_SRC_DIR)/%.cc,$(CORE_BUILD_DIR)/%.o,$(RPC_SRCS))
 RPC_CORE_LIB := $(BUILD_DIR)/libworkflow_rpc_core.a
 
@@ -43,4 +50,5 @@ clean:
 	rm -f $(BUILD_DIR)/echo.pb.h $(BUILD_DIR)/echo.pb.cc $(BUILD_DIR)/echo.pb.o
 	rm -f $(BUILD_DIR)/rpc_simple_server_demo $(BUILD_DIR)/rpc_simple_client_demo
 	rm -f $(BUILD_DIR)/rpc_upstream_server_demo $(BUILD_DIR)/rpc_upstream_client_demo
+	rm -f $(BUILD_DIR)/rpc_tinypb_loadbalance_demo
 	-$(MAKE) -C $(WORKFLOW_DIR) clean

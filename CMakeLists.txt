@@ -30,6 +30,14 @@ add_library(workflow_rpc STATIC
 	rpc/src/rpc_message.cc
 	rpc/src/rpc_framework.cc
 	rpc/src/rpc_easy.cc
+	rpc/src/tinypb_codec.cc
+	rpc/src/tinypb_rpc_dispatcher.cc
+	rpc/src/tinypb_rpc_controller.cc
+	rpc/src/tinypb_rpc_channel.cc
+	rpc/src/tinypb_rpc_async_channel.cc
+	rpc/src/tinypb_rpc_server.cc
+	rpc/src/tinypb_rpc_upstream.cc
+	rpc/src/rpc_config.cc
 	${RPC_PROTO_SRCS}
 )
 
@@ -50,8 +58,20 @@ add_executable(rpc_upstream_server_demo example/upstream_server_demo.cc)
 add_executable(rpc_upstream_client_demo example/upstream_client_demo.cc)
 add_executable(rpc_single_client_server_qps_test test/single_client_server_qps_test.cc)
 
+add_executable(rpc_tinypb_server_demo example/tinypb_server_demo.cc)
+add_executable(rpc_tinypb_client_demo example/tinypb_client_demo.cc)
+add_executable(rpc_tinypb_async_client_demo example/tinypb_async_client_demo.cc)
+add_executable(rpc_tinypb_qps_test test/tinypb_qps_test.cc)
+add_executable(rpc_tinypb_loadbalance_demo example/tinypb_loadbalance_demo.cc)
+
 target_link_libraries(rpc_simple_server_demo workflow_rpc ${WF_LINK_LIBS})
 target_link_libraries(rpc_simple_client_demo workflow_rpc ${WF_LINK_LIBS})
 target_link_libraries(rpc_upstream_server_demo workflow_rpc ${WF_LINK_LIBS})
 target_link_libraries(rpc_upstream_client_demo workflow_rpc ${WF_LINK_LIBS})
 target_link_libraries(rpc_single_client_server_qps_test workflow_rpc ${WF_LINK_LIBS})
+
+target_link_libraries(rpc_tinypb_server_demo workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(rpc_tinypb_client_demo workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(rpc_tinypb_async_client_demo workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(rpc_tinypb_qps_test workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(rpc_tinypb_loadbalance_demo workflow_rpc ${WF_LINK_LIBS})

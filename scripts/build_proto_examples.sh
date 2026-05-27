@@ -58,11 +58,13 @@ compile_obj "${EXAMPLE_DIR}/simple_server_demo.cc" "${OBJ_DIR}/simple_server_dem
 compile_obj "${EXAMPLE_DIR}/simple_client_demo.cc" "${OBJ_DIR}/simple_client_demo.o"
 compile_obj "${EXAMPLE_DIR}/upstream_server_demo.cc" "${OBJ_DIR}/upstream_server_demo.o"
 compile_obj "${EXAMPLE_DIR}/upstream_client_demo.cc" "${OBJ_DIR}/upstream_client_demo.o"
+compile_obj "${EXAMPLE_DIR}/tinypb_loadbalance_demo.cc" "${OBJ_DIR}/tinypb_loadbalance_demo.o"
 
 echo "[INFO] linking example binaries"
 link_bin "${BUILD_DIR}/rpc_simple_server_demo" "${OBJ_DIR}/simple_server_demo.o" "${OBJ_DIR}/echo.pb.o"
 link_bin "${BUILD_DIR}/rpc_simple_client_demo" "${OBJ_DIR}/simple_client_demo.o" "${OBJ_DIR}/echo.pb.o"
 link_bin "${BUILD_DIR}/rpc_upstream_server_demo" "${OBJ_DIR}/upstream_server_demo.o" "${OBJ_DIR}/echo.pb.o"
 link_bin "${BUILD_DIR}/rpc_upstream_client_demo" "${OBJ_DIR}/upstream_client_demo.o" "${OBJ_DIR}/echo.pb.o"
+link_bin "${BUILD_DIR}/rpc_tinypb_loadbalance_demo" "${OBJ_DIR}/tinypb_loadbalance_demo.o" "${OBJ_DIR}/echo.pb.o"
 
 echo "[OK] built proto and example binaries in ${BUILD_DIR}"
