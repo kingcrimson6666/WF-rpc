@@ -86,9 +86,10 @@ int main() {
         
         wf::rpc::example::EchoResponse response;
         wf_rpc::SimpleRpcResult result =
-            wf_rpc::SimpleRpcClient::call_by_url<wf::rpc::example::EchoRequest,
-                                                 wf::rpc::example::EchoResponse>(
-                std::string("upstream://") + kUpstreamName,
+            wf_rpc::SimpleRpcClient::call<wf::rpc::example::EchoRequest,
+                                          wf::rpc::example::EchoResponse>(
+                kUpstreamName,
+                20000,
                 kServiceName,
                 kMethodName,
                 request,

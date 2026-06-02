@@ -45,3 +45,31 @@ services:
     command: ["./rpc_single_client_server_qps_test", "1000"]
     stop_signal: SIGINT
     profiles: ["qps"]
+
+  registry-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: workflow-rpc-demo:latest
+    command: ["./rpc_service_discovery_server_demo", "20000", "EchoService", "http://etcd:2379"]
+    stop_signal: SIGINT
+    profiles: ["registry"]
+    depends_on:
+      - etcd
+
+  registry-client:
+    image: workflow-rpc-demo:latest
+    command: ["./rpc_service_discovery_client_demo", "EchoService", "http://etcd:2379", "5"]
+    depends_on:
+      - registry-server
+    profiles: ["registry"]
+
+  etcd:
+    image: bitnami/etcd:3.5.15
+    environment:
+      - ALLOW_NONE_AUTHENTICATION=yes
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://etcd:2379
+    ports:
+      - "2379:2379"
+    profiles: ["registry"]

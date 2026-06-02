@@ -38,6 +38,11 @@ add_library(workflow_rpc STATIC
 	rpc/src/tinypb_rpc_server.cc
 	rpc/src/tinypb_rpc_upstream.cc
 	rpc/src/rpc_config.cc
+	rpc/src/rpc_circuit_breaker.cc
+	rpc/src/rpc_rate_limiter.cc
+	rpc/src/rpc_metrics.cc
+	rpc/src/rpc_logger.cc
+	rpc/src/rpc_service_registry.cc
 	${RPC_PROTO_SRCS}
 )
 
@@ -63,6 +68,11 @@ add_executable(rpc_tinypb_client_demo example/tinypb_client_demo.cc)
 add_executable(rpc_tinypb_async_client_demo example/tinypb_async_client_demo.cc)
 add_executable(rpc_tinypb_qps_test test/tinypb_qps_test.cc)
 add_executable(rpc_tinypb_loadbalance_demo example/tinypb_loadbalance_demo.cc)
+add_executable(rpc_tinypb_tls_server_demo example/tinypb_tls_server_demo.cc)
+add_executable(rpc_tinypb_tls_client_demo example/tinypb_tls_client_demo.cc)
+add_executable(rpc_service_discovery_server_demo example/tinypb_service_discovery_server_demo.cc)
+add_executable(rpc_service_discovery_client_demo example/tinypb_service_discovery_client_demo.cc)
+add_executable(rpc_registry_loadbalance_demo example/tinypb_registry_loadbalance_demo.cc)
 
 target_link_libraries(rpc_simple_server_demo workflow_rpc ${WF_LINK_LIBS})
 target_link_libraries(rpc_simple_client_demo workflow_rpc ${WF_LINK_LIBS})
@@ -75,3 +85,8 @@ target_link_libraries(rpc_tinypb_client_demo workflow_rpc ${WF_LINK_LIBS})
 target_link_libraries(rpc_tinypb_async_client_demo workflow_rpc ${WF_LINK_LIBS})
 target_link_libraries(rpc_tinypb_qps_test workflow_rpc ${WF_LINK_LIBS})
 target_link_libraries(rpc_tinypb_loadbalance_demo workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(rpc_tinypb_tls_server_demo workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(rpc_tinypb_tls_client_demo workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(rpc_service_discovery_server_demo workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(rpc_service_discovery_client_demo workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(rpc_registry_loadbalance_demo workflow_rpc ${WF_LINK_LIBS})

@@ -2,9 +2,12 @@
 #include <google/protobuf/descriptor.h>
 #include <workflow/WFTaskFactory.h>
 #include <workflow/WFGlobal.h>
+#include <workflow/EndpointParams.h>
+#include <arpa/inet.h>
 #include <atomic>
 #include <cinttypes>
 #include <memory>
+#include <openssl/err.h>
 
 namespace wf_rpc
 {
@@ -30,6 +33,7 @@ static void channel_callback(WFNetworkTask<protocol::TLVMessage, protocol::TLVMe
 
     if (task->get_state() != WFT_STATE_SUCCESS)
     {
+        std::cerr << "Network error: state=" << task->get_state() << ", error=" << task->get_error() << std::endl;
         if (data->controller)
             data->controller->SetFailed("network error: " + std::to_string(task->get_error()));
         if (data->done)
@@ -75,13 +79,65 @@ static void channel_callback(WFNetworkTask<protocol::TLVMessage, protocol::TLVMe
 }
 
 TinyPbRpcChannel::TinyPbRpcChannel(const std::string& host, unsigned short port)
-    : host_(host), port_(port), use_upstream_(false)
+    : host_(host), port_(port), use_upstream_(false), use_tls_(false), ssl_ctx_(nullptr)
 {
 }
 
 TinyPbRpcChannel::TinyPbRpcChannel(const std::string& url)
-    : url_(url), use_upstream_(true)
+    : url_(url), use_upstream_(true), use_tls_(false), ssl_ctx_(nullptr)
 {
+}
+
+TinyPbRpcChannel::TinyPbRpcChannel(const std::string& host, unsigned short port, 
+                                   const std::string& cert_file)
+    : host_(host), port_(port), use_upstream_(false), use_tls_(true), 
+      cert_file_(cert_file), ssl_ctx_(nullptr)
+{
+    init_ssl_ctx();
+}
+
+TinyPbRpcChannel::TinyPbRpcChannel(const std::string& host, unsigned short port, 
+                                   const std::string& cert_file, const std::string& key_file)
+    : host_(host), port_(port), use_upstream_(false), use_tls_(true), 
+      cert_file_(cert_file), key_file_(key_file), ssl_ctx_(nullptr)
+{
+    init_ssl_ctx();
+}
+
+TinyPbRpcChannel::~TinyPbRpcChannel()
+{
+    if (ssl_ctx_)
+    {
+        SSL_CTX_free(ssl_ctx_);
+    }
+}
+
+void TinyPbRpcChannel::init_ssl_ctx()
+{
+    SSL_library_init();
+    OpenSSL_add_all_algorithms();
+    SSL_load_error_strings();
+
+    ssl_ctx_ = SSL_CTX_new(TLS_client_method());
+    if (!ssl_ctx_)
+    {
+        ERR_print_errors_fp(stderr);
+        return;
+    }
+
+    if (!cert_file_.empty())
+    {
+        if (SSL_CTX_load_verify_locations(ssl_ctx_, cert_file_.c_str(), nullptr) != 1)
+        {
+            std::cerr << "Warning: Failed to load certificate, continuing with SSL_VERIFY_NONE" << std::endl;
+        }
+    }
+
+    SSL_CTX_set_verify(ssl_ctx_, SSL_VERIFY_NONE, nullptr);
+    SSL_CTX_set_options(ssl_ctx_, SSL_OP_ALL | SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3);
+    
+    SSL_CTX_set_min_proto_version(ssl_ctx_, TLS1_2_VERSION);
+    SSL_CTX_set_max_proto_version(ssl_ctx_, TLS1_3_VERSION);
 }
 
 void TinyPbRpcChannel::CallMethod(const google::protobuf::MethodDescriptor* method,
@@ -133,13 +189,28 @@ void TinyPbRpcChannel::CallMethod(const google::protobuf::MethodDescriptor* meth
     callback_data->done = done;
 
     WFNetworkTask<protocol::TLVMessage, protocol::TLVMessage>* task;
+    enum TransportType transport_type = use_tls_ ? TT_TCP_SSL : TT_TCP;
+
     if (use_upstream_)
     {
-        task = Factory::create_client_task(TT_TCP, url_.c_str(), 1, channel_callback);
+        task = Factory::create_client_task(transport_type, url_.c_str(), 1, channel_callback);
+    }
+    else if (use_tls_ && ssl_ctx_)
+    {
+        struct sockaddr_in addr;
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(port_);
+        inet_pton(AF_INET, host_.c_str(), &addr.sin_addr);
+        task = Factory::create_client_task(transport_type, 
+                                           (const struct sockaddr*)&addr, 
+                                           sizeof(addr),
+                                           ssl_ctx_,
+                                           1, 
+                                           channel_callback);
     }
     else
     {
-        task = Factory::create_client_task(TT_TCP, host_.c_str(), port_, 1, channel_callback);
+        task = Factory::create_client_task(transport_type, host_.c_str(), port_, 1, channel_callback);
     }
 
     task->user_data = callback_data;

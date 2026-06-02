@@ -4,6 +4,7 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -78,6 +79,7 @@ private:
 private:
 	std::unordered_map<std::string, binary_handler_t> handlers_;
 	std::unique_ptr<RpcWfServer> server_;
+	std::mutex mutex_;
 };
 
 struct UpstreamServer

@@ -54,6 +54,7 @@ void RpcServer::register_binary_method(const std::string& service,
 								const std::string& method,
 								binary_handler_t handler)
 {
+	std::lock_guard<std::mutex> lock(this->mutex_);
 	this->handlers_[key_of(service, method)] = std::move(handler);
 }
 
@@ -73,16 +74,21 @@ void RpcServer::on_process(RpcTask *task)
 		return;
 	}
 
-	auto it = this->handlers_.find(key_of(service, method));
-	if (it == this->handlers_.end())
+	binary_handler_t handler;
 	{
-		resp->set_status(RPC_NOT_FOUND);
-		resp->set_payload("service or method not found");
-		return;
+		std::lock_guard<std::mutex> lock(this->mutex_);
+		auto it = this->handlers_.find(key_of(service, method));
+		if (it == this->handlers_.end())
+		{
+			resp->set_status(RPC_NOT_FOUND);
+			resp->set_payload("service or method not found");
+			return;
+		}
+		handler = it->second;
 	}
 
 	std::string out;
-	uint32_t status = it->second(req->payload(), &out);
+	uint32_t status = handler(req->payload(), &out);
 	resp->set_status(status);
 	if (status == RPC_OK)
 		resp->set_payload(std::move(out));

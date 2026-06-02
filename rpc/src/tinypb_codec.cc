@@ -2,9 +2,48 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include <errno.h>
+#include <mutex>
 
 namespace wf_rpc
 {
+
+static uint32_t crc32_table[256];
+static std::mutex crc32_mutex_;
+
+static void init_crc32_table()
+{
+    uint32_t crc;
+    for (int i = 0; i < 256; i++)
+    {
+        crc = i;
+        for (int j = 0; j < 8; j++)
+        {
+            crc = (crc & 1) ? (0xEDB88320 ^ (crc >> 1)) : (crc >> 1);
+        }
+        crc32_table[i] = crc;
+    }
+}
+
+static uint32_t crc32(const char* data, size_t length)
+{
+    static bool initialized = false;
+    if (!initialized)
+    {
+        std::lock_guard<std::mutex> lock(crc32_mutex_);
+        if (!initialized)
+        {
+            init_crc32_table();
+            initialized = true;
+        }
+    }
+    
+    uint32_t crc = 0xFFFFFFFF;
+    for (size_t i = 0; i < length; i++)
+    {
+        crc = crc32_table[(crc ^ data[i]) & 0xFF] ^ (crc >> 8);
+    }
+    return crc ^ 0xFFFFFFFF;
+}
 
 uint32_t TinyPbCodec::encode_uint32(uint32_t hostlong)
 {
@@ -23,23 +62,21 @@ int TinyPbCodec::encode(const TinyPbStruct& data, std::string& out)
     size_t err_info_len = data.err_info.size();
     size_t pb_data_len = data.pb_data.size();
     
-    const size_t header_size = 1 + 4 + 4 + 4 + 4 + 4 + 4 + 1;
     const size_t variable_size = msg_req_len + service_name_len + err_info_len + pb_data_len;
+    const size_t total_len = TINYPB_FIXED_HEADER_SIZE + variable_size;
     
-    if (variable_size > SIZE_MAX - header_size)
+    if (variable_size > SIZE_MAX - TINYPB_FIXED_HEADER_SIZE)
     {
         errno = EMSGSIZE;
         return -1;
     }
-    
-    size_t total_len = header_size + variable_size;
     
     out.resize(total_len);
     char* ptr = &out[0];
     
     *ptr++ = TINYPB_START;
     
-    uint32_t pk_len = encode_uint32((uint32_t)(total_len - 1 - 1));
+    uint32_t pk_len = encode_uint32((uint32_t)(total_len - 2));
     memcpy(ptr, &pk_len, 4);
     ptr += 4;
     
@@ -71,7 +108,9 @@ int TinyPbCodec::encode(const TinyPbStruct& data, std::string& out)
     memcpy(ptr, data.pb_data.data(), pb_data_len);
     ptr += pb_data_len;
     
-    uint32_t checksum = encode_uint32(TINYPB_CHECKSUM_VALUE);
+    const char* checksum_data = out.data() + 1;
+    size_t checksum_len = total_len - 1 - 4 - 1;
+    uint32_t checksum = encode_uint32(crc32(checksum_data, checksum_len));
     memcpy(ptr, &checksum, 4);
     ptr += 4;
     
@@ -137,22 +176,24 @@ int TinyPbCodec::decode(const std::string& in, TinyPbStruct& data)
     data.err_info.assign(ptr + pos, err_info_len);
     pos += err_info_len;
     
-    uint32_t checksum;
     size_t pb_data_end = in.size() - 4 - 1;
     data.pb_data.assign(ptr + pos, pb_data_end - pos);
-    pos = pb_data_end;
     
-    memcpy(&checksum, ptr + pos, 4);
-    checksum = decode_uint32(checksum);
-    pos += 4;
+    uint32_t expected_checksum;
+    memcpy(&expected_checksum, ptr + pb_data_end, 4);
+    expected_checksum = decode_uint32(expected_checksum);
     
-    if (checksum != TINYPB_CHECKSUM_VALUE)
+    const char* checksum_data = ptr + 1;
+    size_t checksum_len = pb_data_end - 1;
+    uint32_t actual_checksum = crc32(checksum_data, checksum_len);
+    
+    if (actual_checksum != expected_checksum)
     {
         errno = EBADMSG;
         return -1;
     }
     
-    if (ptr[pos] != TINYPB_END)
+    if (ptr[in.size() - 1] != TINYPB_END)
     {
         errno = EBADMSG;
         return -1;
