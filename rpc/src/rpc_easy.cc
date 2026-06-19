@@ -1,7 +1,22 @@
 #include "rpc_easy.h"
+#include <workflow/WFGlobal.h>
 
 namespace wf_rpc
 {
+
+// 注册Simple RPC的scheme支持
+static bool register_simple_scheme()
+{
+    // 注册simple://scheme，默认端口为9000
+    WFGlobal::register_scheme_port("simple", 9000);
+    WFGlobal::register_scheme_port("Simple", 9000);
+    WFGlobal::register_scheme_port("SIMPLE", 9000);
+    
+    return true;
+}
+
+// 在全局初始化时注册scheme
+static bool g_simple_scheme_registered = register_simple_scheme();
 
 EasyRpcServer::EasyRpcServer(const std::string& service_name) :
 	service_name_(service_name),
@@ -72,37 +87,37 @@ EasyRpcClient::EasyRpcClient(const std::string& host,
 {
 }
 
-int ServiceRegistry::create_weighted(const std::string& upstream_name,
+int UpstreamRegistry::create_weighted(const std::string& upstream_name,
 				     bool try_another)
 {
 	return RpcClient::create_weighted_upstream(upstream_name, try_another);
 }
 
-int ServiceRegistry::register_server(const std::string& upstream_name,
+int UpstreamRegistry::register_server(const std::string& upstream_name,
 				   const std::string& address)
 {
 	return RpcClient::add_upstream_server(upstream_name, address);
 }
 
-int ServiceRegistry::register_server(const std::string& upstream_name,
+int UpstreamRegistry::register_server(const std::string& upstream_name,
 				   const std::string& address,
 				   const struct AddressParams *params)
 {
 	return RpcClient::add_upstream_server(upstream_name, address, params);
 }
 
-int ServiceRegistry::unregister_server(const std::string& upstream_name,
+int UpstreamRegistry::unregister_server(const std::string& upstream_name,
 				     const std::string& address)
 {
 	return RpcClient::remove_upstream_server(upstream_name, address);
 }
 
-int ServiceRegistry::remove_service(const std::string& upstream_name)
+int UpstreamRegistry::remove_service(const std::string& upstream_name)
 {
 	return RpcClient::delete_upstream(upstream_name);
 }
 
-int ServiceRegistry::configure_weighted(const std::string& upstream_name,
+int UpstreamRegistry::configure_weighted(const std::string& upstream_name,
 				      const std::vector<UpstreamServer>& servers,
 				      bool try_another)
 {
@@ -111,7 +126,7 @@ int ServiceRegistry::configure_weighted(const std::string& upstream_name,
 						      try_another);
 }
 
-int ServiceRegistry::configure_weighted(const std::string& upstream_name,
+int UpstreamRegistry::configure_weighted(const std::string& upstream_name,
 				      const std::vector<UpstreamServerParams>& servers,
 				      bool try_another)
 {

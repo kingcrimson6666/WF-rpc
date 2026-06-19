@@ -2,8 +2,11 @@
 #include <workflow/WFTaskFactory.h>
 #include <workflow/WFFacilities.h>
 #include <mutex>
+#include <chrono>
 #include "tinypb_codec.h"
 #include "rpc_service_registry.h"
+#include "rpc_metrics.h"
+#include "rpc_logger.h"
 
 namespace wf_rpc
 {
@@ -154,9 +157,16 @@ void TinyPbRpcServer::on_process(WFNetworkTask<protocol::TLVMessage, protocol::T
 
     std::string& req_value = *req->get_value();
 
+    // 记录请求开始时间
+    auto start_time = std::chrono::steady_clock::now();
+
     TinyPbStruct request_struct;
     if (TinyPbCodec::decode(req_value, request_struct) != 0)
     {
+        // 记录解码失败
+        RPC_LOG_ERROR("Failed to decode request");
+        RpcMetrics::instance().record_failure("unknown", "unknown");
+
         TinyPbStruct response_struct;
         response_struct.msg_req = "unknown";
         response_struct.service_full_name = "";
@@ -171,8 +181,51 @@ void TinyPbRpcServer::on_process(WFNetworkTask<protocol::TLVMessage, protocol::T
         return;
     }
 
+    // 解析服务名和方法名
+    std::string service_name;
+    std::string method_name;
+    size_t pos = request_struct.service_full_name.find('.');
+    if (pos != std::string::npos)
+    {
+        service_name = request_struct.service_full_name.substr(0, pos);
+        method_name = request_struct.service_full_name.substr(pos + 1);
+    }
+    else
+    {
+        service_name = request_struct.service_full_name;
+        method_name = "unknown";
+    }
+
+    // 记录请求开始
+    RPC_LOG_INFOF("Received request: service=%s, method=%s, msg_req=%s",
+                  service_name.c_str(), method_name.c_str(), request_struct.msg_req.c_str());
+    RpcMetrics::instance().record_request(service_name, method_name);
+
     TinyPbStruct response_struct;
     dispatcher_->dispatch(request_struct, response_struct);
+
+    // 记录请求结束时间
+    auto end_time = std::chrono::steady_clock::now();
+    auto latency = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+
+    // 根据响应结果记录指标和日志
+    if (response_struct.err_code == 0)
+    {
+        // 请求成功
+        RpcMetrics::instance().record_success(service_name, method_name);
+        RpcMetrics::instance().record_latency(service_name, method_name, latency.count());
+        RPC_LOG_INFOF("Request success: service=%s, method=%s, latency=%ldms",
+                      service_name.c_str(), method_name.c_str(), latency.count());
+    }
+    else
+    {
+        // 请求失败
+        RpcMetrics::instance().record_failure(service_name, method_name);
+        RpcMetrics::instance().record_latency(service_name, method_name, latency.count());
+        RPC_LOG_ERRORF("Request failed: service=%s, method=%s, err_code=%d, err_info=%s, latency=%ldms",
+                       service_name.c_str(), method_name.c_str(), response_struct.err_code,
+                       response_struct.err_info.c_str(), latency.count());
+    }
 
     std::string encoded;
     if (TinyPbCodec::encode(response_struct, encoded) == 0)

@@ -36,13 +36,13 @@ add_library(workflow_rpc STATIC
 	rpc/src/tinypb_rpc_channel.cc
 	rpc/src/tinypb_rpc_async_channel.cc
 	rpc/src/tinypb_rpc_server.cc
-	rpc/src/tinypb_rpc_upstream.cc
 	rpc/src/rpc_config.cc
 	rpc/src/rpc_circuit_breaker.cc
 	rpc/src/rpc_rate_limiter.cc
 	rpc/src/rpc_metrics.cc
 	rpc/src/rpc_logger.cc
 	rpc/src/rpc_service_registry.cc
+	rpc/src/rpc_service_governance.cc
 	${RPC_PROTO_SRCS}
 )
 
@@ -57,36 +57,56 @@ else()
 	set(WF_LINK_LIBS ${WORKFLOW_DEP_LIB} pthread OpenSSL::SSL OpenSSL::Crypto ${LIBRT} ${Protobuf_LIBRARIES})
 endif()
 
-add_executable(rpc_simple_server_demo example/simple_server_demo.cc)
-add_executable(rpc_simple_client_demo example/simple_client_demo.cc)
-add_executable(rpc_upstream_server_demo example/upstream_server_demo.cc)
-add_executable(rpc_upstream_client_demo example/upstream_client_demo.cc)
+# Simple RPC示例（新）
+add_executable(simple_rpc_server example/simple_rpc_server.cc)
+add_executable(simple_rpc_client example/simple_rpc_client.cc)
+add_executable(simple_rpc_lb_server example/simple_rpc_lb_server.cc)
+add_executable(simple_rpc_lb_client example/simple_rpc_lb_client.cc)
+
+target_link_libraries(simple_rpc_server workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(simple_rpc_client workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(simple_rpc_lb_server workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(simple_rpc_lb_client workflow_rpc ${WF_LINK_LIBS})
+
+# TinyPB RPC示例（新）
+add_executable(tinypb_rpc_server example/tinypb_rpc_server.cc)
+add_executable(tinypb_rpc_client example/tinypb_rpc_client.cc)
+add_executable(tinypb_rpc_async_client example/tinypb_rpc_async_client.cc)
+add_executable(tinypb_rpc_lb_server example/tinypb_rpc_lb_server.cc)
+add_executable(tinypb_rpc_lb_client example/tinypb_rpc_lb_client.cc)
+add_executable(tinypb_rpc_tls_server example/tinypb_rpc_tls_server.cc)
+add_executable(tinypb_rpc_tls_client example/tinypb_rpc_tls_client.cc)
+add_executable(tinypb_rpc_discovery_server example/tinypb_rpc_discovery_server.cc)
+add_executable(tinypb_rpc_discovery_client example/tinypb_rpc_discovery_client.cc)
+add_executable(tinypb_rpc_config_server example/tinypb_rpc_config_server.cc)
+add_executable(tinypb_rpc_config_client example/tinypb_rpc_config_client.cc)
+
+target_link_libraries(tinypb_rpc_server workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(tinypb_rpc_client workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(tinypb_rpc_async_client workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(tinypb_rpc_lb_server workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(tinypb_rpc_lb_client workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(tinypb_rpc_tls_server workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(tinypb_rpc_tls_client workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(tinypb_rpc_discovery_server workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(tinypb_rpc_discovery_client workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(tinypb_rpc_config_server workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(tinypb_rpc_config_client workflow_rpc ${WF_LINK_LIBS})
+
+# 整合测试示例（新）
+add_executable(tinypb_rpc_full_integration_server example/tinypb_rpc_full_integration_server.cc)
+add_executable(tinypb_rpc_full_integration_client example/tinypb_rpc_full_integration_client.cc)
+add_executable(tinypb_rpc_microservice_integration example/tinypb_rpc_microservice_integration.cc)
+add_executable(rpc_comparison_integration example/rpc_comparison_integration.cc)
+
+target_link_libraries(tinypb_rpc_full_integration_server workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(tinypb_rpc_full_integration_client workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(tinypb_rpc_microservice_integration workflow_rpc ${WF_LINK_LIBS})
+target_link_libraries(rpc_comparison_integration workflow_rpc ${WF_LINK_LIBS})
+
+# 性能测试（保留）
 add_executable(rpc_single_client_server_qps_test test/single_client_server_qps_test.cc)
-
-add_executable(rpc_tinypb_server_demo example/tinypb_server_demo.cc)
-add_executable(rpc_tinypb_client_demo example/tinypb_client_demo.cc)
-add_executable(rpc_tinypb_async_client_demo example/tinypb_async_client_demo.cc)
 add_executable(rpc_tinypb_qps_test test/tinypb_qps_test.cc)
-add_executable(rpc_tinypb_loadbalance_demo example/tinypb_loadbalance_demo.cc)
-add_executable(rpc_tinypb_tls_server_demo example/tinypb_tls_server_demo.cc)
-add_executable(rpc_tinypb_tls_client_demo example/tinypb_tls_client_demo.cc)
-add_executable(rpc_service_discovery_server_demo example/tinypb_service_discovery_server_demo.cc)
-add_executable(rpc_service_discovery_client_demo example/tinypb_service_discovery_client_demo.cc)
-add_executable(rpc_registry_loadbalance_demo example/tinypb_registry_loadbalance_demo.cc)
 
-target_link_libraries(rpc_simple_server_demo workflow_rpc ${WF_LINK_LIBS})
-target_link_libraries(rpc_simple_client_demo workflow_rpc ${WF_LINK_LIBS})
-target_link_libraries(rpc_upstream_server_demo workflow_rpc ${WF_LINK_LIBS})
-target_link_libraries(rpc_upstream_client_demo workflow_rpc ${WF_LINK_LIBS})
 target_link_libraries(rpc_single_client_server_qps_test workflow_rpc ${WF_LINK_LIBS})
-
-target_link_libraries(rpc_tinypb_server_demo workflow_rpc ${WF_LINK_LIBS})
-target_link_libraries(rpc_tinypb_client_demo workflow_rpc ${WF_LINK_LIBS})
-target_link_libraries(rpc_tinypb_async_client_demo workflow_rpc ${WF_LINK_LIBS})
 target_link_libraries(rpc_tinypb_qps_test workflow_rpc ${WF_LINK_LIBS})
-target_link_libraries(rpc_tinypb_loadbalance_demo workflow_rpc ${WF_LINK_LIBS})
-target_link_libraries(rpc_tinypb_tls_server_demo workflow_rpc ${WF_LINK_LIBS})
-target_link_libraries(rpc_tinypb_tls_client_demo workflow_rpc ${WF_LINK_LIBS})
-target_link_libraries(rpc_service_discovery_server_demo workflow_rpc ${WF_LINK_LIBS})
-target_link_libraries(rpc_service_discovery_client_demo workflow_rpc ${WF_LINK_LIBS})
-target_link_libraries(rpc_registry_loadbalance_demo workflow_rpc ${WF_LINK_LIBS})

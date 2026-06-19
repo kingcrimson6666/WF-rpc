@@ -246,7 +246,7 @@ public:
 	}
 };
 
-class ServiceRegistry
+class UpstreamRegistry
 {
 public:
 	static int create_weighted(const std::string& upstream_name,

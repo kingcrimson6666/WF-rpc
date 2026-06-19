@@ -46,19 +46,25 @@ project/
 │       ├── rpc_logger.*                # 结构化日志系统
 │       └── rpc_service_registry.*     # 服务注册中心（etcd 集成）
 ├── example/
-│   ├── simple_server_demo.cc        # Simple RPC 服务端示例
-│   ├── simple_client_demo.cc         # Simple RPC 客户端示例
-│   ├── upstream_server_demo.cc        # Upstream 双后端示例
-│   ├── upstream_client_demo.cc       # Upstream 负载均衡客户端
-│   ├── tinypb_server_demo.cc         # TinyPB 服务端示例
-│   ├── tinypb_client_demo.cc         # TinyPB 同步客户端示例
-│   ├── tinypb_async_client_demo.cc   # TinyPB 异步客户端示例
-│   ├── tinypb_loadbalance_demo.cc    # TinyPB 负载均衡综合示例
-│   ├── tinypb_tls_server_demo.cc     # TinyPB TLS 服务端示例
-│   ├── tinypb_tls_client_demo.cc     # TinyPB TLS 客户端示例
-│   ├── tinypb_service_discovery_server_demo.cc  # 服务注册示例
-│   ├── tinypb_service_discovery_client_demo.cc  # 服务发现示例
-│   └── tinypb_registry_loadbalance_demo.cc      # 服务发现+负载均衡示例
+│   ├── simple_rpc_server.cc              # Simple RPC 基础服务端示例（端口9000）
+│   ├── simple_rpc_client.cc              # Simple RPC 基础客户端示例
+│   ├── simple_rpc_lb_server.cc           # Simple RPC 负载均衡服务端（端口26000-26002）
+│   ├── simple_rpc_lb_client.cc           # Simple RPC 负载均衡客户端（加权随机策略）
+│   ├── tinypb_rpc_server.cc              # TinyPB RPC 基础服务端示例（端口20001）
+│   ├── tinypb_rpc_client.cc              # TinyPB RPC 基础客户端示例（同步调用）
+│   ├── tinypb_rpc_async_client.cc        # TinyPB RPC 异步客户端示例（异步调用）
+│   ├── tinypb_rpc_lb_server.cc           # TinyPB RPC 负载均衡服务端（端口22000-22002）
+│   ├── tinypb_rpc_lb_client.cc           # TinyPB RPC 负载均衡客户端（加权随机策略）
+│   ├── tinypb_rpc_tls_server.cc          # TinyPB RPC TLS加密服务端（端口23000）
+│   ├── tinypb_rpc_tls_client.cc          # TinyPB RPC TLS加密客户端
+│   ├── tinypb_rpc_discovery_server.cc    # TinyPB RPC 服务发现服务端（端口24000）
+│   ├── tinypb_rpc_discovery_client.cc    # TinyPB RPC 服务发现客户端（etcd集成）
+│   ├── tinypb_rpc_config_server.cc       # TinyPB RPC 配置驱动服务端（端口27000-27002）
+│   ├── tinypb_rpc_config_client.cc       # TinyPB RPC 配置驱动客户端（XML配置）
+│   ├── tinypb_rpc_full_integration_server.cc  # TinyPB RPC 完整功能整合测试服务端（端口25000-25002）
+│   ├── tinypb_rpc_full_integration_client.cc  # TinyPB RPC 完整功能整合测试客户端
+│   ├── tinypb_rpc_microservice_integration.cc # TinyPB RPC 微服务架构整合测试
+│   └── rpc_comparison_integration.cc     # Simple RPC vs TinyPB RPC 对比测试
 ├── test/
 │   ├── single_client_server_qps_test.cc  # 多线程 QPS 压测
 │   └── tinypb_unittest.cc               # TinyPB 单元测试
@@ -153,6 +159,39 @@ project/
 - `SimpleRpcServer`：快速注册 protobuf 方法并启动服务
 - `SimpleRpcClient`：同步阻塞调用，返回 `SimpleRpcResult`
 - `ServiceRegistry`：配置/清理 upstream 路由（加权后端等）
+
+### 2.8 Scheme 注册机制
+
+Workflow框架通过scheme识别URL类型，RPC框架需要注册自定义scheme才能正确解析URL：
+
+- **Simple RPC**：注册`simple://`scheme（默认端口9000）
+- **TinyPB RPC**：注册`tinypb://`和`tinypbs://`scheme（默认端口20001）
+
+注册机制实现：
+- 在[rpc_easy.cc](file:///home/kingcrimson/code/Myproject/WF-rpc/rpc/src/rpc_easy.cc#L7-L18)中注册Simple RPC scheme
+- 在[tinypb_rpc_channel.cc](file:///home/kingcrimson/code/Myproject/WF-rpc/rpc/src/tinypb_rpc_channel.cc#L19-L38)中注册TinyPB RPC scheme
+- 通过`WFGlobal::register_scheme_port()`接口注册scheme和默认端口
+
+使用方式：
+- Simple RPC负载均衡：`simple://upstream_name`
+- TinyPB RPC负载均衡：`tinypb://upstream_name`
+- TinyPB RPC TLS加密：`tinypbs://upstream_name`
+
+### 2.9 配置驱动架构
+
+通过XML配置文件自动应用所有功能：
+
+- **日志配置**：自动设置日志级别和输出文件
+- **服务治理配置**：自动创建熔断器和限流器
+- **负载均衡配置**：自动注册upstream到Workflow框架
+- **服务器配置**：自动设置监听地址、协议类型、线程数
+
+配置文件示例：`rpc_config_example.xml`
+
+配置驱动实现：
+- 在[rpc_config.cc](file:///home/kingcrimson/code/Myproject/WF-rpc/rpc/src/rpc_config.cc#L412-L450)中自动注册upstream
+- 返回正确的scheme URL（`tinypb://`代替`upstream://`）
+- 自动应用所有配置到RPC组件
 
 ## 3. 核心组件详解
 
@@ -260,20 +299,27 @@ make -j$(nproc)
 
 | 可执行文件 | 说明 |
 |-----------|------|
-| `rpc_simple_server_demo` | Simple RPC 服务端 |
-| `rpc_simple_client_demo` | Simple RPC 客户端 |
-| `rpc_upstream_server_demo` | Upstream 双后端服务端 |
-| `rpc_upstream_client_demo` | Upstream 负载均衡客户端 |
-| `rpc_tinypb_server_demo` | TinyPB RPC 服务端 |
-| `rpc_tinypb_client_demo` | TinyPB RPC 同步客户端 |
-| `rpc_tinypb_async_client_demo` | TinyPB RPC 异步客户端 |
+| `simple_rpc_server` | Simple RPC 基础服务端（端口9000） |
+| `simple_rpc_client` | Simple RPC 基础客户端 |
+| `simple_rpc_lb_server` | Simple RPC 负载均衡服务端（端口26000-26002） |
+| `simple_rpc_lb_client` | Simple RPC 负载均衡客户端（加权随机策略） |
+| `tinypb_rpc_server` | TinyPB RPC 基础服务端（端口20001） |
+| `tinypb_rpc_client` | TinyPB RPC 基础客户端（同步调用） |
+| `tinypb_rpc_async_client` | TinyPB RPC 异步客户端 |
+| `tinypb_rpc_lb_server` | TinyPB RPC 负载均衡服务端（端口22000-22002） |
+| `tinypb_rpc_lb_client` | TinyPB RPC 负载均衡客户端（加权随机策略） |
+| `tinypb_rpc_tls_server` | TinyPB RPC TLS加密服务端（端口23000） |
+| `tinypb_rpc_tls_client` | TinyPB RPC TLS加密客户端 |
+| `tinypb_rpc_discovery_server` | TinyPB RPC 服务发现服务端（端口24000） |
+| `tinypb_rpc_discovery_client` | TinyPB RPC 服务发现客户端（etcd集成） |
+| `tinypb_rpc_config_server` | TinyPB RPC 配置驱动服务端（端口27000-27002） |
+| `tinypb_rpc_config_client` | TinyPB RPC 配置驱动客户端（XML配置） |
+| `tinypb_rpc_full_integration_server` | TinyPB RPC 完整功能整合测试服务端（端口25000-25002） |
+| `tinypb_rpc_full_integration_client` | TinyPB RPC 完整功能整合测试客户端 |
+| `tinypb_rpc_microservice_integration` | TinyPB RPC 微服务架构整合测试 |
+| `rpc_comparison_integration` | Simple RPC vs TinyPB RPC 对比测试 |
 | `rpc_single_client_server_qps_test` | 多线程 QPS 压测（Simple RPC） |
 | `rpc_tinypb_qps_test` | 多线程 QPS 压测（TinyPB RPC） |
-| `rpc_tinypb_loadbalance_demo` | TinyPB 负载均衡综合示例 |
-| `rpc_tinypb_tls_server_demo` | TinyPB TLS 服务端 |
-| `rpc_tinypb_tls_client_demo` | TinyPB TLS 客户端 |
-| `rpc_service_discovery_server_demo` | 服务注册服务端 |
-| `rpc_service_discovery_client_demo` | 服务发现客户端 |
 
 ### 5.2 方式 B：Make + 脚本
 
@@ -342,43 +388,97 @@ docker compose --profile registry up --build --abort-on-container-exit registry-
 
 ## 6. 快速运行
 
-### 6.1 Simple RPC 示例
+### 6.1 Simple RPC 基础示例
 
 终端 1（服务端）：
 
 ```bash
 cd project/build
-./rpc_simple_server_demo
+./simple_rpc_server
 ```
 
 终端 2（客户端）：
 
 ```bash
 cd project/build
-./rpc_simple_client_demo
+./simple_rpc_client
 ```
 
-预期：客户端输出类似 `simple rpc response: echo_simple: hello_simple_rpc`。
+预期：客户端输出类似 `Response: echo_simple: hello_simple_rpc`。
 
-### 6.2 TinyPB RPC 同步示例
+### 6.2 Simple RPC 负载均衡示例
+
+终端 1（启动3个服务端实例）：
+
+```bash
+cd project/build
+./simple_rpc_lb_server
+```
+
+终端 2（负载均衡客户端）：
+
+```bash
+cd project/build
+./simple_rpc_lb_client
+```
+
+预期：客户端输出10个请求的响应，分布在不同端口（26000、26001、26002），负载均衡效果明显。
+
+### 6.3 TinyPB RPC 基础示例
 
 终端 1（服务端）：
 
 ```bash
 cd project/build
-./rpc_tinypb_server_demo
+./tinypb_rpc_server
 ```
 
 终端 2（同步客户端）：
 
 ```bash
 cd project/build
-./rpc_tinypb_client_demo
+./tinypb_rpc_client
 ```
 
 预期：客户端输出 `Response: echo_tinypb: hello_tinypb`
 
-### 6.3 TinyPB RPC TLS 示例
+### 6.4 TinyPB RPC 异步示例
+
+终端 1（服务端）：
+
+```bash
+cd project/build
+./tinypb_rpc_server
+```
+
+终端 2（异步客户端）：
+
+```bash
+cd project/build
+./tinypb_rpc_async_client
+```
+
+预期：客户端异步调用成功，输出响应消息。
+
+### 6.5 TinyPB RPC 负载均衡示例
+
+终端 1（启动3个服务端实例）：
+
+```bash
+cd project/build
+./tinypb_rpc_lb_server
+```
+
+终端 2（负载均衡客户端）：
+
+```bash
+cd project/build
+./tinypb_rpc_lb_client
+```
+
+预期：客户端输出10个请求的响应，分布在不同端口（22000、22001、22002），负载均衡效果明显。
+
+### 6.6 TinyPB RPC TLS 加密示例
 
 首先生成证书：
 
@@ -391,61 +491,62 @@ cd project
 
 ```bash
 cd project/build
-./rpc_tinypb_tls_server_demo 127.0.0.1 20001 ./conf/server.crt ./conf/server.key
+./tinypb_rpc_tls_server
 ```
 
 终端 2（TLS 客户端）：
 
 ```bash
 cd project/build
-./rpc_tinypb_tls_client_demo 127.0.0.1 20001 ./conf/server.crt
+./tinypb_rpc_tls_client
 ```
 
-### 6.4 TinyPB RPC 服务注册示例
+预期：客户端输出TLS加密通信的响应，延迟约44ms。
 
-首先启动 etcd：
+### 6.7 TinyPB RPC 配置驱动示例
 
-```bash
-cd project
-docker-compose -f docker-compose.etcd.yml up -d
-```
-
-终端 1（服务注册服务端）：
+终端 1（配置驱动服务端）：
 
 ```bash
 cd project/build
-./rpc_service_discovery_server_demo 20000 EchoService
+./tinypb_rpc_config_server ../rpc_config_example.xml
 ```
 
-终端 2（服务发现客户端）：
+终端 2（配置驱动客户端）：
 
 ```bash
 cd project/build
-./rpc_service_discovery_client_demo EchoService 127.0.0.1:2379
+./tinypb_rpc_config_client ../rpc_config_example.xml
 ```
 
-### 6.5 upstream 加权路由示例
+预期：服务端自动应用所有配置（日志、服务治理、负载均衡），客户端成功连接。
 
-终端 1（启动两个后端）：
+### 6.8 TinyPB RPC 完整功能整合测试
+
+终端 1（完整功能服务端）：
 
 ```bash
 cd project/build
-./rpc_upstream_server_demo
+./tinypb_rpc_full_integration_server
 ```
 
-终端 2（通过 upstream 调用）：
+终端 2（完整功能客户端）：
 
 ```bash
 cd project/build
-./rpc_upstream_client_demo
+./tinypb_rpc_full_integration_client
 ```
 
-### 6.6 TinyPB 负载均衡综合示例
+预期：客户端输出20个请求的响应，成功率100%，自动集成负载均衡、熔断器、限流器、监控指标、日志系统、请求追踪、数据完整性校验。
+
+### 6.9 RPC 对比测试
 
 ```bash
 cd project/build
-./rpc_tinypb_loadbalance_demo
+./rpc_comparison_integration
 ```
+
+预期：输出Simple RPC和TinyPB RPC的对比结果，包括成功率、平均延迟等指标。
 
 ## 7. 单机多线程 QPS 测试
 

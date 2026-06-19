@@ -7,6 +7,8 @@
 #include <algorithm>
 #include "tinypb_rpc_server.h"
 #include "rpc_framework.h"
+#include "rpc_logger.h"
+#include "rpc_service_governance.h"
 
 namespace wf_rpc
 {
@@ -46,6 +48,49 @@ static void cleanup_upstreams(const std::vector<std::string>& created_upstreams)
 int StartRpcServer()
 {
     const RpcConfig& config = GetConfig();
+
+    // 应用日志配置
+    if (!config.log_level.empty())
+    {
+        LogLevel level = LOG_LEVEL_INFO;
+        if (config.log_level == "DEBUG")
+            level = LOG_LEVEL_DEBUG;
+        else if (config.log_level == "INFO")
+            level = LOG_LEVEL_INFO;
+        else if (config.log_level == "WARN")
+            level = LOG_LEVEL_WARN;
+        else if (config.log_level == "ERROR")
+            level = LOG_LEVEL_ERROR;
+        else if (config.log_level == "FATAL")
+            level = LOG_LEVEL_FATAL;
+        
+        RpcLogger::instance().set_level(level);
+        std::cout << "Log level set to: " << config.log_level << std::endl;
+    }
+
+    if (!config.log_path.empty())
+    {
+        RpcLogger::instance().set_output_file(config.log_path);
+        std::cout << "Log output file set to: " << config.log_path << std::endl;
+    }
+
+    // 应用服务治理配置
+    for (const auto& cb : config.circuit_breakers)
+    {
+        ServiceGovernanceManager::instance().get_circuit_breaker(
+            cb.service_name, cb.failure_threshold, cb.success_threshold, cb.timeout_ms);
+        std::cout << "Circuit breaker configured for service: " << cb.service_name
+                  << " (failure_threshold=" << cb.failure_threshold
+                  << ", success_threshold=" << cb.success_threshold
+                  << ", timeout_ms=" << cb.timeout_ms << ")" << std::endl;
+    }
+
+    for (const auto& rl : config.rate_limiters)
+    {
+        ServiceGovernanceManager::instance().get_rate_limiter(rl.service_name, rl.qps);
+        std::cout << "Rate limiter configured for service: " << rl.service_name
+                  << " (qps=" << rl.qps << ")" << std::endl;
+    }
 
     std::string host;
     int port = 0;
@@ -261,7 +306,145 @@ int parse_xml(const std::string& content, RpcConfig& config)
         upstream_start = content.find("<upstream>", pos);
     }
 
+    // 解析熔断器配置
+    size_t circuit_breaker_start = content.find("<circuit_breaker>", pos);
+    while (circuit_breaker_start != std::string::npos)
+    {
+        size_t cb_pos = circuit_breaker_start;
+        CircuitBreakerConfig cb;
+
+        cb.service_name = get_tag_content(content, "service_name", cb_pos);
+
+        std::string failure_threshold_str = get_tag_content(content, "failure_threshold", cb_pos);
+        if (!failure_threshold_str.empty())
+        {
+            try
+            {
+                cb.failure_threshold = std::stoi(failure_threshold_str);
+            }
+            catch (...)
+            {
+                cb.failure_threshold = 50;
+            }
+        }
+        else
+        {
+            cb.failure_threshold = 50;
+        }
+
+        std::string success_threshold_str = get_tag_content(content, "success_threshold", cb_pos);
+        if (!success_threshold_str.empty())
+        {
+            try
+            {
+                cb.success_threshold = std::stoi(success_threshold_str);
+            }
+            catch (...)
+            {
+                cb.success_threshold = 5;
+            }
+        }
+        else
+        {
+            cb.success_threshold = 5;
+        }
+
+        std::string timeout_ms_str = get_tag_content(content, "timeout_ms", cb_pos);
+        if (!timeout_ms_str.empty())
+        {
+            try
+            {
+                cb.timeout_ms = std::stoi(timeout_ms_str);
+            }
+            catch (...)
+            {
+                cb.timeout_ms = 30000;
+            }
+        }
+        else
+        {
+            cb.timeout_ms = 30000;
+        }
+
+        config.circuit_breakers.push_back(cb);
+
+        size_t circuit_breaker_end = content.find("</circuit_breaker>", cb_pos);
+        pos = circuit_breaker_end + 18;
+        circuit_breaker_start = content.find("<circuit_breaker>", pos);
+    }
+
+    // 解析限流器配置
+    size_t rate_limiter_start = content.find("<rate_limiter>", pos);
+    while (rate_limiter_start != std::string::npos)
+    {
+        size_t rl_pos = rate_limiter_start;
+        RateLimiterConfig rl;
+
+        rl.service_name = get_tag_content(content, "service_name", rl_pos);
+
+        std::string qps_str = get_tag_content(content, "qps", rl_pos);
+        if (!qps_str.empty())
+        {
+            try
+            {
+                rl.qps = std::stoi(qps_str);
+            }
+            catch (...)
+            {
+                rl.qps = 1000;
+            }
+        }
+        else
+        {
+            rl.qps = 1000;
+        }
+
+        config.rate_limiters.push_back(rl);
+
+        size_t rate_limiter_end = content.find("</rate_limiter>", rl_pos);
+        pos = rate_limiter_end + 15;
+        rate_limiter_start = content.find("<rate_limiter>", pos);
+    }
+
     return 0;
+}
+
+std::string GetClientUpstreamUrl()
+{
+    const RpcConfig& config = GetConfig();
+
+    // 如果配置文件中有upstream配置，则使用第一个upstream
+    if (!config.upstreams.empty())
+    {
+        const UpstreamConfig& upstream = config.upstreams[0];
+        
+        // 注册upstream到Workflow框架
+        std::vector<wf_rpc::UpstreamServer> servers;
+        for (const auto& server : upstream.servers)
+        {
+            servers.push_back({server.address, server.weight});
+        }
+        
+        if (wf_rpc::RpcClient::configure_weighted_upstream(upstream.name, servers, upstream.try_another) == 0)
+        {
+            // 返回tinypb://URL（TinyPB RPC已注册scheme支持）
+            return "tinypb://" + upstream.name;
+        }
+        else
+        {
+            std::cerr << "Failed to configure upstream: " << upstream.name << "\n";
+            return "";
+        }
+    }
+
+    // 否则使用server配置中的地址
+    if (!config.server.address.empty())
+    {
+        return config.server.address;
+    }
+
+    // 如果都没有配置，返回空字符串
+    return "";
 }
 
 }

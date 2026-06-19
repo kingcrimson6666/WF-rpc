@@ -8,9 +8,34 @@
 #include <cinttypes>
 #include <memory>
 #include <openssl/err.h>
+#include <chrono>
+#include "rpc_service_governance.h"
+#include "rpc_metrics.h"
+#include "rpc_logger.h"
+#include "rpc_framework.h"
 
 namespace wf_rpc
 {
+
+// 注册TinyPB RPC的scheme支持
+static bool register_tinypb_scheme()
+{
+    // 注册tinypb://scheme，默认端口为20001
+    WFGlobal::register_scheme_port("tinypb", 20001);
+    WFGlobal::register_scheme_port("TinyPb", 20001);
+    WFGlobal::register_scheme_port("TINYPB", 20001);
+    
+    // 注册tinypbs://scheme（带TLS），默认端口为20001
+    WFGlobal::register_scheme_port("tinypbs", 20001);
+    WFGlobal::register_scheme_port("TinyPbs", 20001);
+    WFGlobal::register_scheme_port("TINYPBs", 20001);
+    WFGlobal::register_scheme_port("TINYPBS", 20001);
+    
+    return true;
+}
+
+// 在全局初始化时注册scheme
+static bool g_scheme_registered = register_tinypb_scheme();
 
 static std::atomic<uint64_t> g_msg_req_seq(0);
 
@@ -25,15 +50,33 @@ struct ChannelCallbackData {
     TinyPbRpcController* controller;
     google::protobuf::Message* response;
     google::protobuf::Closure* done;
+    std::string service_name;
+    std::string method_name;
+    CircuitBreaker* breaker;
+    std::chrono::steady_clock::time_point start_time;
 };
 
 static void channel_callback(WFNetworkTask<protocol::TLVMessage, protocol::TLVMessage>* task)
 {
     std::unique_ptr<ChannelCallbackData> data(reinterpret_cast<ChannelCallbackData*>(task->user_data));
 
+    // 记录请求结束时间
+    auto end_time = std::chrono::steady_clock::now();
+    auto latency = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - data->start_time);
+
     if (task->get_state() != WFT_STATE_SUCCESS)
     {
-        std::cerr << "Network error: state=" << task->get_state() << ", error=" << task->get_error() << std::endl;
+        // 网络错误
+        RPC_LOG_ERRORF("Network error: service=%s, method=%s, state=%d, error=%d, latency=%ldms",
+                       data->service_name.c_str(), data->method_name.c_str(),
+                       task->get_state(), task->get_error(), latency.count());
+        
+        RpcMetrics::instance().record_failure(data->service_name, data->method_name);
+        RpcMetrics::instance().record_latency(data->service_name, data->method_name, latency.count());
+        
+        if (data->breaker)
+            data->breaker->record_failure();
+        
         if (data->controller)
             data->controller->SetFailed("network error: " + std::to_string(task->get_error()));
         if (data->done)
@@ -46,6 +89,16 @@ static void channel_callback(WFNetworkTask<protocol::TLVMessage, protocol::TLVMe
     TinyPbStruct response_struct;
     if (TinyPbCodec::decode(resp_value, response_struct) != 0)
     {
+        // 解码失败
+        RPC_LOG_ERRORF("Failed to decode response: service=%s, method=%s, latency=%ldms",
+                       data->service_name.c_str(), data->method_name.c_str(), latency.count());
+        
+        RpcMetrics::instance().record_failure(data->service_name, data->method_name);
+        RpcMetrics::instance().record_latency(data->service_name, data->method_name, latency.count());
+        
+        if (data->breaker)
+            data->breaker->record_failure();
+        
         if (data->controller)
             data->controller->SetFailed("failed to decode response");
         if (data->done)
@@ -55,6 +108,17 @@ static void channel_callback(WFNetworkTask<protocol::TLVMessage, protocol::TLVMe
 
     if (response_struct.err_code != 0)
     {
+        // RPC业务错误
+        RPC_LOG_ERRORF("RPC error: service=%s, method=%s, err_code=%d, err_info=%s, latency=%ldms",
+                       data->service_name.c_str(), data->method_name.c_str(),
+                       response_struct.err_code, response_struct.err_info.c_str(), latency.count());
+        
+        RpcMetrics::instance().record_failure(data->service_name, data->method_name);
+        RpcMetrics::instance().record_latency(data->service_name, data->method_name, latency.count());
+        
+        if (data->breaker)
+            data->breaker->record_failure();
+        
         if (data->controller)
         {
             data->controller->SetErrorCode(response_struct.err_code);
@@ -67,12 +131,32 @@ static void channel_callback(WFNetworkTask<protocol::TLVMessage, protocol::TLVMe
 
     if (!data->response->ParseFromString(response_struct.pb_data))
     {
+        // 解析失败
+        RPC_LOG_ERRORF("Failed to parse response: service=%s, method=%s, latency=%ldms",
+                       data->service_name.c_str(), data->method_name.c_str(), latency.count());
+        
+        RpcMetrics::instance().record_failure(data->service_name, data->method_name);
+        RpcMetrics::instance().record_latency(data->service_name, data->method_name, latency.count());
+        
+        if (data->breaker)
+            data->breaker->record_failure();
+        
         if (data->controller)
             data->controller->SetFailed("failed to parse response");
         if (data->done)
             data->done->Run();
         return;
     }
+
+    // 请求成功
+    RPC_LOG_INFOF("RPC success: service=%s, method=%s, latency=%ldms",
+                  data->service_name.c_str(), data->method_name.c_str(), latency.count());
+    
+    RpcMetrics::instance().record_success(data->service_name, data->method_name);
+    RpcMetrics::instance().record_latency(data->service_name, data->method_name, latency.count());
+    
+    if (data->breaker)
+        data->breaker->record_success();
 
     if (data->done)
         data->done->Run();
@@ -156,11 +240,63 @@ void TinyPbRpcChannel::CallMethod(const google::protobuf::MethodDescriptor* meth
         return;
     }
 
-    std::string service_full_name = method->service()->full_name() + "." + method->name();
+    // 解析服务名和方法名
+    std::string service_name = method->service()->full_name();
+    std::string method_name = method->name();
+    std::string service_full_name = service_name + "." + method_name;
+
+    // 获取服务治理组件
+    ServiceGovernanceManager& gov_manager = ServiceGovernanceManager::instance();
+    CircuitBreaker* breaker = nullptr;
+    RateLimiter* limiter = nullptr;
+
+    // 检查熔断器
+    if (gov_manager.is_circuit_breaker_enabled(service_name))
+    {
+        breaker = gov_manager.get_circuit_breaker(service_name);
+        if (breaker && !breaker->allow_request())
+        {
+            RPC_LOG_WARNF("Circuit breaker open: service=%s, method=%s",
+                          service_name.c_str(), method_name.c_str());
+            RpcMetrics::instance().record_failure(service_name, method_name);
+            rpc_controller->SetErrorCode(RPC_CIRCUIT_BREAKER_OPEN);
+            rpc_controller->SetFailed("circuit breaker open");
+            if (done)
+                done->Run();
+            return;
+        }
+    }
+
+    // 检查限流器
+    if (gov_manager.is_rate_limiter_enabled(service_name))
+    {
+        limiter = gov_manager.get_rate_limiter(service_name);
+        if (limiter && !limiter->try_acquire(1))
+        {
+            RPC_LOG_WARNF("Rate limited: service=%s, method=%s",
+                          service_name.c_str(), method_name.c_str());
+            RpcMetrics::instance().record_failure(service_name, method_name);
+            rpc_controller->SetErrorCode(RPC_RATE_LIMITED);
+            rpc_controller->SetFailed("rate limited");
+            if (done)
+                done->Run();
+            return;
+        }
+    }
+
+    // 记录请求开始
+    RPC_LOG_INFOF("Sending request: service=%s, method=%s",
+                  service_name.c_str(), method_name.c_str());
+    RpcMetrics::instance().record_request(service_name, method_name);
 
     std::string pb_data;
     if (!request->SerializeToString(&pb_data))
     {
+        RPC_LOG_ERRORF("Failed to serialize request: service=%s, method=%s",
+                       service_name.c_str(), method_name.c_str());
+        RpcMetrics::instance().record_failure(service_name, method_name);
+        if (breaker)
+            breaker->record_failure();
         rpc_controller->SetFailed("failed to serialize request");
         if (done)
             done->Run();
@@ -175,6 +311,11 @@ void TinyPbRpcChannel::CallMethod(const google::protobuf::MethodDescriptor* meth
     std::string encoded_data;
     if (TinyPbCodec::encode(request_struct, encoded_data) != 0)
     {
+        RPC_LOG_ERRORF("Failed to encode request: service=%s, method=%s",
+                       service_name.c_str(), method_name.c_str());
+        RpcMetrics::instance().record_failure(service_name, method_name);
+        if (breaker)
+            breaker->record_failure();
         rpc_controller->SetFailed("failed to encode request");
         if (done)
             done->Run();
@@ -187,6 +328,10 @@ void TinyPbRpcChannel::CallMethod(const google::protobuf::MethodDescriptor* meth
     callback_data->controller = rpc_controller;
     callback_data->response = response;
     callback_data->done = done;
+    callback_data->service_name = service_name;
+    callback_data->method_name = method_name;
+    callback_data->breaker = breaker;
+    callback_data->start_time = std::chrono::steady_clock::now();
 
     WFNetworkTask<protocol::TLVMessage, protocol::TLVMessage>* task;
     enum TransportType transport_type = use_tls_ ? TT_TCP_SSL : TT_TCP;

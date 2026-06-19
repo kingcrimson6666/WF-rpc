@@ -7,7 +7,6 @@
 #include "tinypb_rpc_channel.h"
 #include "tinypb_rpc_async_channel.h"
 #include "tinypb_rpc_server.h"
-#include "tinypb_rpc_upstream.h"
 #include "rpc_config.h"
 
 #endif
